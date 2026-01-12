@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 # ============================================================================
 
 OLLAMA_BASE_URL = "http://host.docker.internal:11434"
-OLLAMA_MODEL = "llama3"
+OLLAMA_MODEL = "llama3-function-calling"  # Changed from "llama3"
 REQUEST_TIMEOUT = 120.0
 
 # ============================================================================
@@ -137,7 +137,7 @@ Always respond with valid JSON when performing function calls."""
 
     formatted = f"""<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|}
+{system_prompt}<|eot_id|><|start_header_id|>user<|end_header_id|>
 
 {user_message}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
 
