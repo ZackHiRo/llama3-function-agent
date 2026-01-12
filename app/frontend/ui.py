@@ -36,22 +36,8 @@ st.markdown(
     <style>
     @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 
-    /* Light Mode Variables */
-    [data-theme="light"] {
-        --bg-primary: #ffffff;
-        --bg-secondary: #f8f9fa;
-        --bg-tertiary: #e9ecef;
-        --accent-cyan: #0066cc;
-        --accent-magenta: #cc0066;
-        --accent-green: #00aa55;
-        --text-primary: #1a1a1a;
-        --text-muted: #6c757d;
-        --border-subtle: #dee2e6;
-        --header-gradient: linear-gradient(135deg, #0066cc, #cc0066);
-    }
-
-    /* Dark Mode Variables (Default) */
-    :root, [data-theme="dark"] {
+    /* Dark Mode Variables */
+    :root {
         --bg-primary: #0a0a0f;
         --bg-secondary: #12121a;
         --bg-tertiary: #1a1a24;
@@ -64,16 +50,7 @@ st.markdown(
         --header-gradient: linear-gradient(135deg, #00d4ff, #ff00aa);
     }
 
-    /* Auto-detect theme from Streamlit */
     .stApp {
-        background: var(--bg-primary) !important;
-    }
-
-    [data-theme="light"] .stApp {
-        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 50%, #ffffff 100%) !important;
-    }
-
-    [data-theme="dark"] .stApp {
         background: linear-gradient(135deg, #0a0a0f 0%, #0d0d14 50%, #0a0a0f 100%) !important;
     }
 
@@ -128,13 +105,6 @@ st.markdown(
         font-family: 'JetBrains Mono', monospace;
         font-size: 0.85rem;
         overflow-x: auto;
-    }
-
-    [data-theme="light"] .json-block {
-        box-shadow: 0 2px 8px rgba(0, 170, 85, 0.15);
-    }
-
-    [data-theme="dark"] .json-block {
         box-shadow: 0 0 20px rgba(0, 255, 136, 0.1);
     }
 
@@ -150,23 +120,15 @@ st.markdown(
     }
 
     .status-online {
-        background: rgba(0, 170, 85, 0.1);
+        background: rgba(0, 255, 136, 0.15);
         border: 1px solid var(--accent-green);
         color: var(--accent-green);
     }
 
-    [data-theme="light"] .status-online {
-        background: rgba(0, 170, 85, 0.15);
-    }
-
     .status-offline {
-        background: rgba(255, 68, 68, 0.1);
+        background: rgba(255, 68, 68, 0.15);
         border: 1px solid #ff4444;
         color: #ff4444;
-    }
-
-    [data-theme="light"] .status-offline {
-        background: rgba(255, 68, 68, 0.15);
     }
 
     .status-dot {
@@ -178,13 +140,6 @@ st.markdown(
 
     .status-dot.online {
         background: var(--accent-green);
-    }
-
-    [data-theme="light"] .status-dot.online {
-        box-shadow: 0 0 8px rgba(0, 170, 85, 0.5);
-    }
-
-    [data-theme="dark"] .status-dot.online {
         box-shadow: 0 0 10px var(--accent-green);
     }
 
@@ -208,13 +163,6 @@ st.markdown(
 
     .stTextArea textarea:focus {
         border-color: var(--accent-cyan) !important;
-    }
-
-    [data-theme="light"] .stTextArea textarea:focus {
-        box-shadow: 0 0 12px rgba(0, 102, 204, 0.25) !important;
-    }
-
-    [data-theme="dark"] .stTextArea textarea:focus {
         box-shadow: 0 0 15px rgba(0, 212, 255, 0.2) !important;
     }
 
@@ -231,14 +179,6 @@ st.markdown(
 
     .stButton > button:hover {
         transform: translateY(-2px) !important;
-        opacity: 0.9;
-    }
-
-    [data-theme="light"] .stButton > button:hover {
-        box-shadow: 0 8px 20px rgba(0, 102, 204, 0.3) !important;
-    }
-
-    [data-theme="dark"] .stButton > button:hover {
         box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3) !important;
     }
 
@@ -247,7 +187,7 @@ st.markdown(
     }
 
     .error-box {
-        background: rgba(255, 68, 68, 0.1);
+        background: rgba(255, 68, 68, 0.15);
         border: 1px solid #ff4444;
         border-radius: 8px;
         padding: 1rem;
@@ -255,22 +195,14 @@ st.markdown(
         font-family: 'JetBrains Mono', monospace;
     }
 
-    [data-theme="light"] .error-box {
-        background: rgba(255, 68, 68, 0.15);
-    }
-
     .parse-warning {
-        background: rgba(255, 170, 0, 0.1);
+        background: rgba(255, 170, 0, 0.15);
         border: 1px solid #ffaa00;
         border-radius: 6px;
         padding: 0.75rem;
         color: #ffaa00;
         font-size: 0.85rem;
         margin-top: 0.5rem;
-    }
-
-    [data-theme="light"] .parse-warning {
-        background: rgba(255, 170, 0, 0.15);
     }
 
     .disclaimer-banner {
@@ -285,11 +217,6 @@ st.markdown(
         display: flex;
         align-items: center;
         gap: 0.75rem;
-    }
-
-    [data-theme="light"] .disclaimer-banner {
-        background: linear-gradient(135deg, rgba(255, 193, 7, 0.2), rgba(255, 152, 0, 0.2));
-        border-left-color: #f57c00;
     }
 
     .disclaimer-icon {
@@ -308,38 +235,6 @@ st.markdown(
         font-size: 0.85rem;
     }
     </style>
-    <script>
-    // Detect Streamlit theme and apply data-theme attribute
-    (function() {
-        function detectTheme() {
-            const app = document.querySelector('.stApp');
-            if (!app) return;
-            
-            const bgColor = window.getComputedStyle(app).backgroundColor;
-            const rgb = bgColor.match(/\\d+/g);
-            if (rgb && rgb.length >= 3) {
-                const r = parseInt(rgb[0]);
-                const g = parseInt(rgb[1]);
-                const b = parseInt(rgb[2]);
-                const isLight = (r + g + b) > 600;
-                document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
-            }
-        }
-        
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', detectTheme);
-        } else {
-            detectTheme();
-        }
-        
-        setTimeout(detectTheme, 100);
-        setTimeout(detectTheme, 500);
-        
-        // Watch for theme changes
-        const observer = new MutationObserver(detectTheme);
-        observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-    })();
-    </script>
     """,
     unsafe_allow_html=True,
 )
