@@ -1,0 +1,13 @@
+[
+  {
+    "input": "Book a meeting with Sarah for next Tuesday at 2pm.",
+    "expected_output": {
+      "function": "calendar_schedule",
+      "arguments": {
+        "participants": ["Sarah"],
+        "time": "14:00",
+        "day": "Tuesday"
+      }
+    }
+  }
+]

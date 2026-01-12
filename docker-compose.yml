@@ -1,0 +1,126 @@
+# =============================================================================
+# Llama 3 Function Agent - Docker Compose Configuration
+# =============================================================================
+#
+# This compose file orchestrates the FastAPI backend and Streamlit frontend.
+# Ollama is assumed to be running on the host machine.
+#
+# NETWORKING WITH HOST OLLAMA:
+# ----------------------------
+# The backend uses `host.docker.internal` to connect to Ollama running on host.
+# This works automatically on Docker Desktop (Windows/macOS).
+#
+# For Linux, add this to the backend service:
+#   extra_hosts:
+#     - "host.docker.internal:host-gateway"
+#
+# Alternatively, run Ollama in Docker (see commented service below).
+#
+# USAGE:
+#   docker-compose up -d          # Start services
+#   docker-compose logs -f        # View logs
+#   docker-compose down           # Stop services
+#
+# =============================================================================
+
+version: "3.8"
+
+services:
+  # ---------------------------------------------------------------------------
+  # FastAPI Backend
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    container_name: llama3-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    # For Linux hosts, uncomment the following to enable host.docker.internal:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - llama3-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Streamlit Frontend
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+    container_name: llama3-frontend
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - llama3-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Ollama (OPTIONAL - Uncomment if not running Ollama on host)
+  # ---------------------------------------------------------------------------
+  # If you prefer to run Ollama in Docker instead of on the host, uncomment
+  # this service. Note: GPU passthrough requires nvidia-container-toolkit.
+  #
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: llama3-ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   # For GPU support (NVIDIA), uncomment:
+  #   # deploy:
+  #   #   resources:
+  #   #     reservations:
+  #   #       devices:
+  #   #         - driver: nvidia
+  #   #           count: all
+  #   #           capabilities: [gpu]
+  #   networks:
+  #     - llama3-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #
+  # If using the Ollama container, update the backend to use:
+  #   OLLAMA_BASE_URL=http://ollama:11434
+  # ---------------------------------------------------------------------------
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  llama3-network:
+    driver: bridge
+    name: llama3-network
+
+# =============================================================================
+# Volumes (Uncomment if using Ollama container)
+# =============================================================================
+# volumes:
+#   ollama-data:
+#     name: llama3-ollama-data
