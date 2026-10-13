@@ -4,6 +4,7 @@ Handles chat requests and interfaces with Ollama API
 """
 
 import json
+import os
 import re
 from typing import Any
 
@@ -16,9 +17,10 @@ from pydantic import BaseModel, Field
 # Configuration
 # ============================================================================
 
-OLLAMA_BASE_URL = "http://host.docker.internal:11434"
-OLLAMA_MODEL = "llama3-function-calling"  # Changed from "llama3"
-REQUEST_TIMEOUT = 120.0
+# Each value can be overridden via environment variable (used by the Hugging Face Space).
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3-function-calling")  # Changed from "llama3"
+REQUEST_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "120.0"))
 
 # ============================================================================
 # Pydantic Models

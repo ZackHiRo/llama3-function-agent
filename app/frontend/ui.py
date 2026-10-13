@@ -4,6 +4,7 @@ Clean UI with Chat and JSON Output panels
 """
 
 import json
+import os
 
 import requests
 import streamlit as st
@@ -12,7 +13,8 @@ import streamlit as st
 # Configuration
 # =============================================================================
 
-API_BASE_URL = "http://backend:8000"
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://backend:8000")
+CHAT_TIMEOUT = float(os.environ.get("REQUEST_TIMEOUT", "120"))
 PAGE_TITLE = "Llama 3 Function Agent"
 PAGE_ICON = "🦙"
 
@@ -262,7 +264,7 @@ def send_chat_message(message: str, temperature: float = 0.7) -> dict:
         response = requests.post(
             f"{API_BASE_URL}/chat",
             json={"message": message, "temperature": temperature},
-            timeout=120,
+            timeout=CHAT_TIMEOUT,
         )
         if response.status_code == 200:
             return {"success": True, "data": response.json()}
