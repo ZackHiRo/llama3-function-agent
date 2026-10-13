@@ -1,3 +1,5 @@
 # Streamlit Frontend Dependencies
 streamlit==1.31.1
 requests==2.31.0
+# Newer pyarrow requires NumPy 2, but streamlit 1.31.1 pins NumPy < 2 -> ImportError on start.
+pyarrow<20
