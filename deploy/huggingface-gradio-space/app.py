@@ -4,35 +4,90 @@ Gradio app for the Llama 3 Function Agent (Hugging Face Space, free CPU tier).
 Loads the fine-tuned GGUF straight from the Hub with llama-cpp-python (the same
 llama.cpp engine Ollama wraps), so no Docker, Ollama or separate API server is needed.
 
-sanitize_input / extract_json_from_response / the system prompt mirror
+sanitize_input / extract_json_from_response / the prompt and DEFAULT_FUNCTIONS mirror
 app/backend/main.py so behaviour matches the FastAPI version. They are copied
 rather than imported because main.py pulls in FastAPI, which this Space doesn't need.
 """
 
-import glob
 import json
 import os
 import re
 
 import gradio as gr
-from huggingface_hub import snapshot_download
+from huggingface_hub import hf_hub_download
 from llama_cpp import Llama
 
 # ============================================================================
-# Configuration (set GGUF_REPO as a Variable in the Space settings)
+# Configuration (override with Variables in the Space settings)
 # ============================================================================
 
-GGUF_REPO = os.environ.get("GGUF_REPO", "")
+GGUF_REPO = os.environ.get("GGUF_REPO", "AOUNZakaria/llama3-8b-function-calling-gguf")
+# The repo holds two Q4_K_M files whose names differ only in case; download just one
+# (the one its Modelfile uses) instead of ~10 GB.
+GGUF_FILE = os.environ.get("GGUF_FILE", "llama-3-8b-Instruct.Q4_K_M.gguf")
 N_CTX = 4096
-STOP_TOKENS = ["<|eot_id|>"]
+STOP_TOKENS = ["<|eot_id|>", "<|end_of_text|>", "<|start_header_id|>"]
 
-SYSTEM_PROMPT = """You are a helpful AI assistant that can perform function calls.
-When asked to perform actions, respond with a JSON object containing:
-- "action": the action to perform
-- "parameters": an object with relevant parameters
-- "reasoning": brief explanation of your approach
+# The model was fine-tuned on glaive-function-calling-v2, whose system prompt lists
+# the callable functions as JSON schemas, so it is prompted the same way.
+DEFAULT_FUNCTIONS = [
+    {
+        "name": "get_weather",
+        "description": "Get the current weather for a location",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "location": {"type": "string", "description": "City name, e.g. Tokyo"},
+                "units": {"type": "string", "enum": ["metric", "imperial"]},
+            },
+            "required": ["location"],
+        },
+    },
+    {
+        "name": "search_web",
+        "description": "Search the web for information",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The search query"},
+                "num_results": {"type": "integer", "description": "Number of results to return"},
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "send_email",
+        "description": "Send an email to a recipient",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "to": {"type": "string", "description": "Recipient email address"},
+                "subject": {"type": "string", "description": "Email subject"},
+                "body": {"type": "string", "description": "Email body"},
+            },
+            "required": ["to", "subject", "body"],
+        },
+    },
+    {
+        "name": "schedule_meeting",
+        "description": "Schedule a meeting in the calendar",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "participants": {"type": "array", "items": {"type": "string"}},
+                "date": {"type": "string", "description": "Date of the meeting, e.g. tomorrow or 2024-06-01"},
+                "time": {"type": "string", "description": "Start time, e.g. 10:00"},
+                "duration_minutes": {"type": "integer"},
+            },
+            "required": ["participants", "date", "time"],
+        },
+    },
+]
 
-Always respond with valid JSON when performing function calls."""
+SYSTEM_PROMPT = (
+    "You are a helpful assistant with access to the following functions. "
+    "Use them if required -\n" + "\n".join(json.dumps(fn, indent=4) for fn in DEFAULT_FUNCTIONS)
+)
 
 # ============================================================================
 # Helpers (mirrors app/backend/main.py)
@@ -41,17 +96,9 @@ Always respond with valid JSON when performing function calls."""
 
 def sanitize_input(message: str) -> str:
     """Strip Llama 3 control tokens to prevent prompt injection, normalise whitespace."""
-    dangerous_tokens = [
-        "<|begin_of_text|>",
-        "<|end_of_text|>",
-        "<|start_header_id|>",
-        "<|end_header_id|>",
-        "<|eot_id|>",
-        "<|finetune_right_pad_id|>",
-    ]
-    for token in dangerous_tokens:
-        message = message.replace(token, "")
-    return " ".join(message.split()).strip()
+    message = re.sub(r"<\|[a-z0-9_]+\|>", "", message)
+    lines = (" ".join(line.split()) for line in message.splitlines())
+    return "\n".join(line for line in lines if line).strip()
 
 
 def format_llama3_prompt(user_message: str) -> str:
@@ -64,24 +111,52 @@ def format_llama3_prompt(user_message: str) -> str:
     )
 
 
-def extract_json_from_response(text: str):
-    """Return (parsed_json | None, error | None)."""
-    patterns = [
-        r"```json\s*([\s\S]*?)\s*```",
-        r"```\s*([\s\S]*?)\s*```",
-        r"\{[\s\S]*\}",
-        r"\[[\s\S]*\]",
-    ]
-    for pattern in patterns:
-        for match in re.findall(pattern, text):
+# Glaive wraps arguments in single quotes, which isn't valid JSON:
+#   <functioncall> {"name": "get_weather", "arguments": '{"location": "Tokyo"}'}
+_SINGLE_QUOTED_ARGS = re.compile(r"""("arguments"\s*:\s*)'(\{.*?\})'(\s*\})""", re.DOTALL)
+
+
+def _find_json_values(text: str) -> list:
+    """Return every top-level JSON object/array that can be decoded from text."""
+    decoder = json.JSONDecoder()
+    values, i = [], 0
+    while i < len(text):
+        if text[i] in "{[":
             try:
-                return json.loads(match), None
-            except json.JSONDecodeError:
+                value, end = decoder.raw_decode(text, i)
+                values.append(value)
+                i = end
                 continue
-    try:
-        return json.loads(text.strip()), None
-    except json.JSONDecodeError as e:
-        return None, f"Could not parse JSON: {e}"
+            except json.JSONDecodeError:
+                pass
+        i += 1
+    return values
+
+
+def _is_function_call(value) -> bool:
+    return isinstance(value, dict) and isinstance(value.get("name") or value.get("action"), str)
+
+
+def extract_json_from_response(text: str):
+    """Return (parsed_json | None, error | None). Single-quoted Glaive arguments are
+    decoded into a nested object so the JSON view shows them structured."""
+    normalized = _SINGLE_QUOTED_ARGS.sub(
+        lambda m: m.group(1) + json.dumps(m.group(2)) + m.group(3), text
+    )
+    candidates = []
+    for block in re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", normalized):
+        candidates.extend(_find_json_values(block))
+    candidates.extend(_find_json_values(normalized))
+    if not candidates:
+        return None, "No valid JSON found in the response"
+
+    parsed = next((c for c in candidates if _is_function_call(c)), candidates[0])
+    if isinstance(parsed, dict) and isinstance(parsed.get("arguments"), str):
+        try:
+            parsed = {**parsed, "arguments": json.loads(parsed["arguments"])}
+        except json.JSONDecodeError:
+            pass
+    return parsed, None
 
 
 # ============================================================================
@@ -90,23 +165,15 @@ def extract_json_from_response(text: str):
 
 
 def load_model() -> Llama:
-    if not GGUF_REPO:
-        raise RuntimeError(
-            "Set the GGUF_REPO variable in Space settings "
-            "(e.g. your-username/llama3-8b-function-calling-gguf)."
-        )
-    print(f"Downloading GGUF from {GGUF_REPO} ...", flush=True)
-    folder = snapshot_download(
+    print(f"Downloading {GGUF_FILE} from {GGUF_REPO} ...", flush=True)
+    model_path = hf_hub_download(
         repo_id=GGUF_REPO,
-        allow_patterns=["*.gguf"],
+        filename=GGUF_FILE,
         token=os.environ.get("HF_TOKEN"),  # only needed for private repos
     )
-    gguf_files = sorted(glob.glob(f"{folder}/**/*.gguf", recursive=True))
-    if not gguf_files:
-        raise RuntimeError(f"No .gguf file found in {GGUF_REPO}")
-    print(f"Loading {gguf_files[0]} ...", flush=True)
+    print(f"Loading {model_path} ...", flush=True)
     return Llama(
-        model_path=gguf_files[0],
+        model_path=model_path,
         n_ctx=N_CTX,
         n_threads=os.cpu_count() or 2,
         verbose=False,
@@ -153,7 +220,8 @@ with gr.Blocks(title="Llama 3 Function Agent") as demo:
         "# 🦙 Llama 3 Function Agent\n"
         "Llama 3 8B fine-tuned with **QLoRA** for function calling "
         "(base: `unsloth/llama-3-8b-Instruct-bnb-4bit`, dataset: `glaiveai/glaive-function-calling-v2`). "
-        "Runs on free CPU, so expect a few tokens per second."
+        "Runs on free CPU, so expect a few tokens per second.\n\n"
+        "Callable functions: " + ", ".join(f"`{fn['name']}`" for fn in DEFAULT_FUNCTIONS)
     )
     with gr.Row():
         with gr.Column():
@@ -163,7 +231,7 @@ with gr.Blocks(title="Llama 3 Function Agent") as demo:
                 lines=3,
                 max_length=4096,
             )
-            temperature = gr.Slider(0.0, 2.0, value=0.7, step=0.05, label="Temperature")
+            temperature = gr.Slider(0.0, 2.0, value=0.2, step=0.05, label="Temperature")
             max_tokens = gr.Slider(64, 1024, value=512, step=32, label="Max new tokens")
             submit = gr.Button("Run", variant="primary")
             gr.Examples(
@@ -171,6 +239,7 @@ with gr.Blocks(title="Llama 3 Function Agent") as demo:
                     ["Get the weather in Tokyo"],
                     ["Search the web for the latest Python release"],
                     ["Send an email to alex@example.com saying the meeting moved to 3pm"],
+                    ["Schedule a 30-minute meeting with Sarah tomorrow at 10am"],
                 ],
                 inputs=message,
             )

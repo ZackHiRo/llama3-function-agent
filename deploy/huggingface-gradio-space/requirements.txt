@@ -1,2 +1,4 @@
 --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-llama-cpp-python
+# Pinned to a version with a prebuilt CPU wheel; an unpinned install can pick a newer
+# PyPI source release and spend a very long time compiling llama.cpp on the Space.
+llama-cpp-python==0.3.19

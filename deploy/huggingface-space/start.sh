@@ -3,7 +3,10 @@
 # then downloads the GGUF and registers it with Ollama in the background.
 set -euo pipefail
 
-: "${GGUF_REPO:?Set the GGUF_REPO variable in Space settings, e.g. your-username/llama3-8b-function-calling-gguf}"
+# Override either in Space settings → Variables. The repo has two Q4_K_M files whose
+# names differ only in case; download just the one its Modelfile uses.
+export GGUF_REPO="${GGUF_REPO:-AOUNZakaria/llama3-8b-function-calling-gguf}"
+export GGUF_FILE="${GGUF_FILE:-llama-3-8b-Instruct.Q4_K_M.gguf}"
 
 cd /home/user/app
 
@@ -15,27 +18,26 @@ ollama serve &
   echo "Waiting for Ollama..."
   until curl -sf http://127.0.0.1:11434/api/tags >/dev/null; do sleep 1; done
 
-  if ollama list | grep -q "^${OLLAMA_MODEL}"; then
+  if ollama list | grep -q "^${OLLAMA_MODEL}:"; then
     echo "Model ${OLLAMA_MODEL} already registered."
   else
-    echo "Downloading GGUF from ${GGUF_REPO}..."
+    echo "Downloading ${GGUF_FILE} from ${GGUF_REPO}..."
     GGUF_PATH=$(python - <<'PY'
-import glob, os
-from huggingface_hub import snapshot_download
+import os
+from huggingface_hub import hf_hub_download
 
-folder = snapshot_download(
+print(hf_hub_download(
     repo_id=os.environ["GGUF_REPO"],
-    allow_patterns=["*.gguf"],
+    filename=os.environ["GGUF_FILE"],
     local_dir="/home/user/gguf",
     token=os.environ.get("HF_TOKEN"),  # only needed for private repos
-)
-print(sorted(glob.glob(f"{folder}/**/*.gguf", recursive=True))[0])
+))
 PY
     )
     echo "Using ${GGUF_PATH}"
 
     # TEMPLATE is just the prompt: backend/main.py already wraps messages in the
-    # Llama 3 chat format, so Ollama must not apply a second template.
+    # Llama 3 chat format (and sends raw=true), so Ollama must not apply a second one.
     cat > /home/user/Modelfile <<EOF
 FROM ${GGUF_PATH}
 TEMPLATE "{{ .Prompt }}"

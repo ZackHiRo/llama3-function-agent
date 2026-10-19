@@ -21,9 +21,8 @@ PAGE_TITLE = "Llama 3 Function Agent"
 PAGE_ICON = "🦙"
 HEALTH_TTL_SECONDS = 15
 
-# Example requests shown in the empty state and sidebar. These are suggestions only:
-# the backend's system prompt describes the JSON format but does not restrict the
-# model to a fixed list of functions.
+# Example requests shown in the empty state and sidebar. Each maps to one of the
+# backend's default functions (GET /functions), which are listed in the system prompt.
 EXAMPLE_PROMPTS = [
     ("🌤️", "Weather", "What's the weather like in Tokyo right now?"),
     ("🔎", "Web search", "Search the web for the latest Python release notes"),
@@ -246,6 +245,17 @@ def check_api_health() -> dict:
         return {"status": "unreachable", "ollama_connected": False, "model_available": False}
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_functions() -> list[dict]:
+    """Function definitions the backend offers the model (empty if unreachable)."""
+    try:
+        response = requests.get(f"{API_BASE_URL}/functions", timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except (requests.exceptions.RequestException, ValueError):
+        return []
+
+
 def send_chat_message(message: str, temperature: float = 0.7, max_tokens: int = 512) -> dict:
     """Send a chat message to the backend API."""
     try:
@@ -260,6 +270,8 @@ def send_chat_message(message: str, temperature: float = 0.7, max_tokens: int = 
             detail = response.json().get("detail", "Unknown error")
         except ValueError:
             detail = f"HTTP {response.status_code}"
+        if isinstance(detail, list):  # FastAPI validation errors
+            detail = "; ".join(str(err.get("msg", err)) for err in detail)
         return {"success": False, "error": str(detail)}
     except requests.exceptions.Timeout:
         return {"success": False, "error": "Request timed out. The model may be processing a complex query."}
@@ -329,6 +341,9 @@ def render_assistant_turn(turn: dict) -> None:
     st.markdown(f'<div class="badge-row">{"".join(badges)}</div>', unsafe_allow_html=True)
 
     name, args, reasoning = extract_function_call(parsed_json)
+    function_call = parsed_output.get("function_call")
+    if function_call:  # already normalised by the backend
+        name, args = function_call["name"], function_call.get("arguments")
     if name:
         with st.container(border=True):
             st.markdown(
@@ -415,6 +430,13 @@ with st.sidebar:
             args=(prompt,),
             help=prompt,
         )
+
+    functions = fetch_functions()
+    if functions:
+        with st.expander(f"📜 Available functions ({len(functions)})"):
+            for fn in functions:
+                params = ", ".join(fn.get("parameters", {}).get("properties", {}))
+                st.markdown(f"`{fn['name']}({params})`  \n{fn.get('description', '')}")
 
     st.markdown("### 🦙 Model")
     facts_html = "".join(

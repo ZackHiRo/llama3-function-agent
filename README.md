@@ -105,38 +105,29 @@ ollama --version
 sudo systemctl status ollama
 ```
 
-### Step 4: Pull the Llama 3 Model
+### Step 4: Register the Fine-Tuned Model
+
+The fine-tuned weights are published on the Hugging Face Hub:
+
+- GGUF (for Ollama / llama.cpp): [AOUNZakaria/llama3-8b-function-calling-gguf](https://huggingface.co/AOUNZakaria/llama3-8b-function-calling-gguf)
+- LoRA adapters (for transformers / PEFT): [AOUNZakaria/llama3-8b-function-calling-lora](https://huggingface.co/AOUNZakaria/llama3-8b-function-calling-lora)
 
 ```bash
-# Pull the base Llama 3 model (8B parameters)
-ollama pull llama3
+# Download the GGUF (~4.9 GB) and the Modelfile that ships with it
+pip install -U huggingface_hub
+huggingface-cli download AOUNZakaria/llama3-8b-function-calling-gguf \
+  llama-3-8b-Instruct.Q4_K_M.gguf Modelfile --local-dir ./model
+cd model
 
-# For the 70B model (requires more RAM):
-# ollama pull llama3:70b
-
-# For custom GGUF models:
-# 1. Create a Modelfile
-cat << 'EOF' > Modelfile
-FROM /path/to/your-model.gguf
-
-PARAMETER temperature 0.7
-PARAMETER num_ctx 4096
-
-TEMPLATE """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-
-{{ .System }}<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-{{ .Prompt }}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-"""
-EOF
-
-# 2. Create the model
-ollama create my-llama3 -f Modelfile
+# Register it under the name the backend expects (OLLAMA_MODEL)
+ollama create llama3-function-calling -f Modelfile
 
 # Verify model is available
 ollama list
 ```
+
+> The backend sends prompts with `raw: true`, already in the Llama 3 chat format, so the
+> Modelfile's `TEMPLATE`/`SYSTEM` are not applied on `/chat` requests.
 
 ### Step 5: Deploy the Application
 
@@ -178,9 +169,9 @@ sudo ufw enable
 git clone https://github.com/yourusername/llama3-function-agent.git
 cd llama3-function-agent
 
-# Ensure Ollama is running with Llama 3
-ollama pull llama3
+# Ensure Ollama is running with the fine-tuned model (see Step 4)
 ollama serve  # If not running as service
+ollama list   # should show llama3-function-calling
 
 # Start the application
 docker compose up --build
@@ -229,30 +220,35 @@ Content-Type: application/json
 
 {
   "message": "Get weather in Tokyo",
-  "temperature": 0.7,
-  "max_tokens": 2048
+  "temperature": 0.2,
+  "max_tokens": 512,
+  "functions": null
 }
 ```
+
+`functions` is optional: a list of JSON-schema function definitions (Glaive format) to offer
+the model. When omitted, the defaults from `GET /functions` are used
+(`get_weather`, `search_web`, `send_email`, `schedule_meeting`).
 
 **Response:**
 ```json
 {
   "success": true,
-  "response": "```json\n{\"action\": \"get_weather\", ...}\n```",
+  "response": "<functioncall> {\"name\": \"get_weather\", \"arguments\": '{\"location\": \"Tokyo\"}'}",
   "parsed_output": {
     "raw_text": "...",
     "parsed_json": {
-      "action": "get_weather",
-      "parameters": {
-        "location": "Tokyo",
-        "units": "metric"
-      },
-      "reasoning": "User requested weather information for Tokyo"
+      "name": "get_weather",
+      "arguments": "{\"location\": \"Tokyo\"}"
     },
-    "parse_error": null
+    "parse_error": null,
+    "function_call": {
+      "name": "get_weather",
+      "arguments": { "location": "Tokyo" }
+    }
   },
-  "model": "llama3",
-  "tokens_used": 156
+  "model": "llama3-function-calling",
+  "tokens_used": 21
 }
 ```
 
@@ -263,18 +259,14 @@ Content-Type: application/json
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | Ollama API endpoint |
-| `OLLAMA_MODEL` | `llama3` | Model name in Ollama |
+| `OLLAMA_MODEL` | `llama3-function-calling` | Model name in Ollama |
 | `REQUEST_TIMEOUT` | `120.0` | Request timeout in seconds |
+| `NUM_CTX` | `4096` | Context window passed to Ollama |
 
 ### Modifying the Backend
 
-Edit `app/backend/main.py` to change:
-
-```python
-OLLAMA_BASE_URL = "http://host.docker.internal:11434"  # Ollama endpoint
-OLLAMA_MODEL = "llama3"  # Model name
-REQUEST_TIMEOUT = 120.0  # Timeout in seconds
-```
+Set the variables above on the `backend` service in `docker-compose.yml`, or edit the
+defaults (and `DEFAULT_FUNCTIONS`) in `app/backend/main.py`.
 
 ### Using a Custom Model
 
@@ -283,9 +275,10 @@ REQUEST_TIMEOUT = 120.0  # Timeout in seconds
    ollama create my-custom-llama3 -f Modelfile
    ```
 
-2. Update the backend configuration:
-   ```python
-   OLLAMA_MODEL = "my-custom-llama3"
+2. Point the backend at it (`docker-compose.yml`):
+   ```yaml
+   environment:
+     - OLLAMA_MODEL=my-custom-llama3
    ```
 
 3. Rebuild the containers:
@@ -329,9 +322,9 @@ REQUEST_TIMEOUT = 120.0  # Timeout in seconds
    ollama list
    ```
 
-2. Pull the model if missing:
+2. Register the model if missing (see Step 4):
    ```bash
-   ollama pull llama3
+   ollama create llama3-function-calling -f Modelfile
    ```
 
 3. Check available memory:
@@ -368,6 +361,7 @@ llama3-function-agent/
 ├── app/
 │   ├── backend/
 │   │   ├── main.py           # FastAPI application
+│   │   ├── test_main.py      # Backend tests (pytest, Ollama mocked)
 │   │   ├── requirements.txt  # Python dependencies
 │   │   └── Dockerfile        # Backend container
 │   └── frontend/
