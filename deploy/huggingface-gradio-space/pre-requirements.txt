@@ -1,0 +1,3 @@
+# Installed by Hugging Face before requirements.txt. pip >= 23.1 is needed for the
+# --config-settings option used there (the Space image ships an older pip).
+pip>=23.1

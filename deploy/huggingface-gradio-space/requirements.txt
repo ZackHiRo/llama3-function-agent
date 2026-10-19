@@ -1,4 +1,7 @@
---extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
-# Pinned to a version with a prebuilt CPU wheel; an unpinned install can pick a newer
-# PyPI source release and spend a very long time compiling llama.cpp on the Space.
-llama-cpp-python==0.3.19
+# Built from source: the prebuilt CPU wheels at abetlen.github.io/llama-cpp-python/whl/cpu
+# are linked against musl (Alpine), so on the Space's Debian image they fail with
+# "libc.musl-x86_64.so.1: cannot open shared object file".
+# GGML_NATIVE=OFF targets AVX2 instead of the build machine's CPU, so the binary
+# doesn't crash with "illegal instruction" if the Space runs on a different host.
+# The first build takes several minutes; later restarts reuse the cached image.
+llama-cpp-python==0.3.19 --config-settings=cmake.args="-DGGML_NATIVE=OFF;-DGGML_AVX=ON;-DGGML_AVX2=ON;-DGGML_FMA=ON;-DGGML_F16C=ON"
