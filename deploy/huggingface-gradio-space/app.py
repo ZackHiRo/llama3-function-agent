@@ -25,6 +25,8 @@ GGUF_REPO = os.environ.get("GGUF_REPO", "AOUNZakaria/llama3-8b-function-calling-
 # The repo holds two Q4_K_M files whose names differ only in case; download just one
 # (the one its Modelfile uses) instead of ~10 GB.
 GGUF_FILE = os.environ.get("GGUF_FILE", "llama-3-8b-Instruct.Q4_K_M.gguf")
+# Local runs: point at an already-downloaded .gguf to skip the Hub download.
+GGUF_PATH = os.environ.get("GGUF_PATH")
 N_CTX = 4096
 STOP_TOKENS = ["<|eot_id|>", "<|end_of_text|>", "<|start_header_id|>"]
 
@@ -86,7 +88,7 @@ DEFAULT_FUNCTIONS = [
 
 SYSTEM_PROMPT = (
     "You are a helpful assistant with access to the following functions. "
-    "Use them if required -\n" + "\n".join(json.dumps(fn, indent=4) for fn in DEFAULT_FUNCTIONS)
+    "Use them if required -\n" + "\n\n".join(json.dumps(fn, indent=4) for fn in DEFAULT_FUNCTIONS)
 )
 
 # ============================================================================
@@ -165,12 +167,15 @@ def extract_json_from_response(text: str):
 
 
 def load_model() -> Llama:
-    print(f"Downloading {GGUF_FILE} from {GGUF_REPO} ...", flush=True)
-    model_path = hf_hub_download(
-        repo_id=GGUF_REPO,
-        filename=GGUF_FILE,
-        token=os.environ.get("HF_TOKEN"),  # only needed for private repos
-    )
+    if GGUF_PATH:
+        model_path = GGUF_PATH
+    else:
+        print(f"Downloading {GGUF_FILE} from {GGUF_REPO} ...", flush=True)
+        model_path = hf_hub_download(
+            repo_id=GGUF_REPO,
+            filename=GGUF_FILE,
+            token=os.environ.get("HF_TOKEN"),  # only needed for private repos
+        )
     print(f"Loading {model_path} ...", flush=True)
     return Llama(
         model_path=model_path,
@@ -207,7 +212,13 @@ def run_agent(message: str, temperature: float, max_tokens: int):
         yield text, None, "⏳ Generating..."
 
     parsed, error = extract_json_from_response(text)
-    status = "✅ Valid JSON parsed" if error is None else f"⚠️ {error}"
+    if _is_function_call(parsed):
+        status = f"✅ Function call: `{parsed.get('name') or parsed.get('action')}`"
+    elif parsed is not None:
+        status = "✅ Valid JSON parsed (not a function call)"
+    else:
+        # Expected for out-of-scope requests: the model declines in plain text.
+        status = "💬 No function call: the model answered in text"
     yield text, parsed, status
 
 

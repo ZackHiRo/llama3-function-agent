@@ -11,6 +11,7 @@ A production-ready full-stack AI application for deploying a fine-tuned Llama 3 
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
+- [Results](#-results)
 - [Architecture](#-architecture)
 - [Prerequisites](#-prerequisites)
 - [DigitalOcean Deployment](#-digitalocean-deployment)
@@ -31,6 +32,35 @@ This application provides a clean interface for interacting with Llama 3 for fun
 - **JSON Parsing**: Automatic extraction and formatting of JSON from model responses
 - **Input Sanitization**: Protection against prompt injection attacks
 - **Docker Compose**: One-command deployment with health checks
+
+## 📊 Results
+
+Llama 3 8B Instruct fine-tuned with QLoRA (Unsloth, 60 steps on a free Colab T4) on
+[glaive-function-calling-v2](https://huggingface.co/datasets/glaiveai/glaive-function-calling-v2).
+Evaluated on 100 held-out Glaive samples (60 that need a call, 40 out-of-scope requests),
+run locally on CPU through the app's own prompt builder and parser:
+
+| | Fine-tuned | Base | Base + format instructions |
+|---|---:|---:|---:|
+| Fully correct (right call + arguments, or correct decline) | **98%** | 40% | 96% |
+| Function called when expected | **98.3%** | 0% | 95.0% |
+| All expected arguments correct | **96.7%** | 0% | 93.3% |
+| Correct decline on out-of-scope requests | 100% | 100% | 100% |
+| Median prompt length (tokens) | **166** | 166 | 228 |
+
+Without fine-tuning, the base model never calls a function; it narrates a call and makes up
+the result. Spelling out the format in the prompt recovers most of that, so the fine-tune's
+lead over a well-prompted base model is small and not statistically significant on this set
+(p = 0.69). Its advantage is that it needs no instructions, which means 27% shorter prompts.
+Methodology, caveats and how to reproduce: [eval/README.md](eval/README.md).
+
+| Request → function call | Out-of-scope request → declines in text |
+|---|---|
+| ![Function call demo](docs/demo-function-call.png) | ![Out-of-scope demo](docs/demo-out-of-scope.png) |
+
+**Models on the Hugging Face Hub:**
+[GGUF for Ollama / llama.cpp](https://huggingface.co/AOUNZakaria/llama3-8b-function-calling-gguf) ·
+[LoRA adapters](https://huggingface.co/AOUNZakaria/llama3-8b-function-calling-lora)
 
 ## 🏗 Architecture
 
@@ -368,6 +398,16 @@ llama3-function-agent/
 │       ├── ui.py             # Streamlit application
 │       ├── requirements.txt  # Python dependencies
 │       └── Dockerfile        # Frontend container
+├── deploy/
+│   ├── huggingface-gradio-space/  # Gradio + llama-cpp-python Space (free CPU tier)
+│   └── huggingface-space/         # Docker Space: Ollama + FastAPI + Streamlit
+├── eval/
+│   ├── build_dataset.py      # Samples the held-out eval set from Glaive
+│   ├── run_eval.py           # Runs a GGUF over it via the backend's prompt + parser
+│   ├── score.py              # Metrics → eval/README.md
+│   ├── data/                 # The 100 eval samples
+│   └── results/              # Per-sample outputs for each model
+├── docs/                     # Screenshots
 ├── notebooks/
 │   └── finetune.ipynb        # Llama 3 fine-tuning notebook
 ├── docker-compose.yml        # Service orchestration

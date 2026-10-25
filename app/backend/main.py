@@ -198,7 +198,7 @@ def build_system_prompt(functions: list[dict[str, Any]]) -> str:
     """Build the system prompt in the Glaive format the model was fine-tuned on."""
     if not functions:
         return "You are a helpful assistant with no access to external functions."
-    definitions = "\n".join(json.dumps(fn, indent=4) for fn in functions)
+    definitions = "\n\n".join(json.dumps(fn, indent=4) for fn in functions)  # Glaive separator
     return (
         "You are a helpful assistant with access to the following functions. "
         f"Use them if required -\n{definitions}"

@@ -26,6 +26,8 @@ pip install gradio huggingface_hub -r requirements.txt   # compiles llama.cpp (a
 python app.py                                           # downloads the 4.9 GB GGUF on first run
 ```
 
+Already have the GGUF? `GGUF_PATH=/path/to/model.gguf python app.py` skips the download.
+
 Then open http://127.0.0.1:7860. On Apple Silicon, install with plain
 `pip install gradio huggingface_hub llama-cpp-python` instead: the AVX flags in
 `requirements.txt` are x86-only.

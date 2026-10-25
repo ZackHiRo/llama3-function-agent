@@ -67,3 +67,6 @@ htmlcov/
 
 # mypy
 .mypy_cache/
+
+# Eval dataset cache
+eval/.cache/
