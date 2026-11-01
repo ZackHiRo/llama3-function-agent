@@ -27,6 +27,8 @@ python app.py                                           # downloads the 4.9 GB G
 ```
 
 Already have the GGUF? `GGUF_PATH=/path/to/model.gguf python app.py` skips the download.
+On a hyperthreaded laptop, set `N_THREADS` to the number of physical cores (e.g. `N_THREADS=4`):
+llama.cpp gets much slower when it runs more threads than there are cores.
 
 Then open http://127.0.0.1:7860. On Apple Silicon, install with plain
 `pip install gradio huggingface_hub llama-cpp-python` instead: the AVX flags in

@@ -87,16 +87,21 @@ st.markdown(
     .block-container { max-width: 980px; padding-top: 2rem; }
 
     /* ---------- Header ---------- */
+    /* A div, not <h1>: Streamlit wraps headings in a positioned anchor container,
+       which background-clip:text doesn't reach, leaving the title transparent. */
     .main-header {
         font-size: 2.4rem;
         font-weight: 700;
+        line-height: 1.2;
+        text-align: center;
+        margin: 0.5rem 0 0.25rem;
+        letter-spacing: -0.02em;
+    }
+    .main-header .grad {
         background: var(--header-gradient);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
-        text-align: center;
-        margin-bottom: 0.25rem;
-        letter-spacing: -0.02em;
     }
 
     .sub-header {
@@ -148,6 +153,8 @@ st.markdown(
         from { opacity: 0; transform: translateY(6px); }
         to { opacity: 1; transform: translateY(0); }
     }
+    /* Raw model output is one long line; wrap it instead of scrolling sideways. */
+    [data-testid="stExpanderDetails"] pre code { white-space: pre-wrap !important; word-break: break-word; }
     [data-testid="stChatInput"] textarea {
         font-family: 'JetBrains Mono', monospace !important;
     }
@@ -330,20 +337,24 @@ def render_assistant_turn(turn: dict) -> None:
     parsed_json = parsed_output.get("parsed_json")
     raw_text = data.get("response", "")
 
-    badges = [
-        badge("✓ valid JSON", "ok") if parsed_json is not None else badge("✗ no valid JSON", "warn"),
-        badge(f"⏱ {turn['latency']:.1f}s"),
-    ]
+    name, args, reasoning = extract_function_call(parsed_json)
+    function_call = parsed_output.get("function_call")
+    if function_call:  # already normalised by the backend
+        name, args = function_call["name"], function_call.get("arguments")
+
+    # A plain-text reply is a normal outcome (e.g. declining an out-of-scope request), not an error.
+    if name:
+        kind = badge("✓ function call", "ok")
+    elif parsed_json is not None:
+        kind = badge("✓ valid JSON", "ok")
+    else:
+        kind = badge("💬 text reply")
+    badges = [kind, badge(f"⏱ {turn['latency']:.1f}s")]
     if data.get("tokens_used"):
         badges.append(badge(f"{data['tokens_used']} tokens"))
     if data.get("model"):
         badges.append(badge(data["model"]))
     st.markdown(f'<div class="badge-row">{"".join(badges)}</div>', unsafe_allow_html=True)
-
-    name, args, reasoning = extract_function_call(parsed_json)
-    function_call = parsed_output.get("function_call")
-    if function_call:  # already normalised by the backend
-        name, args = function_call["name"], function_call.get("arguments")
     if name:
         with st.container(border=True):
             st.markdown(
@@ -361,8 +372,8 @@ def render_assistant_turn(turn: dict) -> None:
         st.code(format_json_output(parsed_json), language="json")
     else:
         st.markdown(raw_text or "_Empty response._")
-        if parsed_output.get("parse_error"):
-            st.caption(f"⚠️ {parsed_output['parse_error']}")
+        if raw_text:
+            st.caption("No function call: the model answered in text.")
 
     with st.expander("Raw model output"):
         st.code(raw_text, language="text")
@@ -460,7 +471,10 @@ with st.sidebar:
 # Main Content
 # =============================================================================
 
-st.markdown('<h1 class="main-header">🦙 Llama 3 Function Agent</h1>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="main-header" role="heading" aria-level="1">🦙 <span class="grad">Llama 3 Function Agent</span></div>',
+    unsafe_allow_html=True,
+)
 st.markdown(
     '<p class="sub-header">Natural language in → structured function calls out</p>',
     unsafe_allow_html=True,

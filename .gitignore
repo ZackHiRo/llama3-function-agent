@@ -70,3 +70,6 @@ htmlcov/
 
 # Eval dataset cache
 eval/.cache/
+
+# Demo video (kept local)
+demo-video/

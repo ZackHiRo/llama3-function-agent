@@ -28,6 +28,9 @@ GGUF_FILE = os.environ.get("GGUF_FILE", "llama-3-8b-Instruct.Q4_K_M.gguf")
 # Local runs: point at an already-downloaded .gguf to skip the Hub download.
 GGUF_PATH = os.environ.get("GGUF_PATH")
 N_CTX = 4096
+# llama.cpp slows down sharply when its threads outnumber physical cores (e.g. 8 on a
+# 4-core hyperthreaded laptop); set N_THREADS to the physical core count when running locally.
+N_THREADS = int(os.environ.get("N_THREADS", os.cpu_count() or 2))
 STOP_TOKENS = ["<|eot_id|>", "<|end_of_text|>", "<|start_header_id|>"]
 
 # The model was fine-tuned on glaive-function-calling-v2, whose system prompt lists
@@ -180,7 +183,7 @@ def load_model() -> Llama:
     return Llama(
         model_path=model_path,
         n_ctx=N_CTX,
-        n_threads=os.cpu_count() or 2,
+        n_threads=N_THREADS,
         verbose=False,
     )
 
